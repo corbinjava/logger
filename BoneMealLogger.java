@@ -6,7 +6,9 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.json.JSONObject;
@@ -20,8 +22,8 @@ import java.util.UUID;
 
 public class BoneMealLogger extends JavaPlugin implements Listener {
 
-    private final Map<UUID, Integer> bonemealDropCounts = new HashMap<>();
-    private final Map<UUID, Long> lastDropTime = new HashMap<>();
+    private final Map<UUID, Integer> bonemealRemovedCounts = new HashMap<>();
+    private final Map<UUID, Long> lastRemovalTime = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -29,35 +31,43 @@ public class BoneMealLogger extends JavaPlugin implements Listener {
     }
 
     @EventHandler
-    public void onItemDrop(PlayerDropItemEvent event) {
-        Player player = event.getPlayer();
-        UUID playerId = player.getUniqueId();
+    public void onInventoryClick(InventoryClickEvent event) {
+        // checks if theres a player
+        if (event.getWhoClicked() instanceof Player) {
+            Player player = (Player) event.getWhoClicked();
+            UUID playerId = player.getUniqueId();
 
-        // checks if item is bonemeal or not
-        if (event.getItemDrop().getItemStack().getType() == Material.BONE_MEAL) {
-            int amount = event.getItemDrop().getItemStack().getAmount();
-            long currentTime = System.currentTimeMillis();
+            // checks if the inveotry type is crafting 
+            if (event.getView().getTopInventory().getType() == InventoryType.CRAFTING) {
 
-            // checks if they have dropped it in the last 5 seconds (change to whatever u think is best)
-            if (lastDropTime.containsKey(playerId) && currentTime - lastDropTime.get(playerId) <= 5000) {
-                bonemealDropCounts.put(playerId, bonemealDropCounts.get(playerId) + amount);
-            } else {
-                bonemealDropCounts.put(playerId, amount);
-            }
+                // get the item thats being clicked a
+                ItemStack currentItem = event.getCurrentItem();
 
-            lastDropTime.put(playerId, currentTime);
+                // make sure that item is bonem,eal
+                if (currentItem != null && currentItem.getType() == Material.BONE_MEAL) {
+                    int amount = currentItem.getAmount();
+                    long currentTime = System.currentTimeMillis();
 
-            // if they have over 1728 bonemeal then log it to the webhook
-            if (bonemealDropCounts.get(playerId) >= 1728) {
-                Location loc = player.getLocation();
-                String message = player.getName() + " dropped " + bonemealDropCounts.get(playerId)
-                        + " bonemeal in " + (currentTime - lastDropTime.get(playerId)) / 1000 + " seconds at "
-                        + "X: " + loc.getBlockX() + " Y: " + loc.getBlockY() + " Z: " + loc.getBlockZ();
-                sendToDiscord(message);
+                    // check if the player has removed the threshold in <= 5 seconds
+                    if (lastRemovalTime.containsKey(playerId) && currentTime - lastRemovalTime.get(playerId) <= 5000) {
+                        bonemealRemovedCounts.put(playerId, bonemealRemovedCounts.get(playerId) + amount);
+                    } else {
+                        bonemealRemovedCounts.put(playerId, amount);
+                    }
 
-                // reset counter after they drop it
-                bonemealDropCounts.remove(playerId);
-                lastDropTime.remove(playerId);
+                    lastRemovalTime.put(playerId, currentTime);
+
+                    // if the threshold is met in less than 5 seconds, this 
+                    if (bonemealRemovedCounts.get(playerId) >= 1728) {
+                        Location loc = player.getLocation();
+                        String message = player.getName() + " flagged at " + loc.getBlockX() + " " + loc.getBlockY() + " " + loc.getBlockZ();
+                        sendToDiscord(message);
+
+                        // resets when logged
+                        bonemealRemovedCounts.remove(playerId);
+                        lastRemovalTime.remove(playerId);
+                    }
+                }
             }
         }
     }
@@ -80,7 +90,7 @@ public class BoneMealLogger extends JavaPlugin implements Listener {
                     byte[] input = json.toString().getBytes("utf-8");
                     os.write(input, 0, input.length);
 
-                    connection.getResponseCode();
+                    connection.getResponseCode(); 
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
